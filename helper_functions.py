@@ -7,7 +7,7 @@ def image_preprocessing(
     img_size: int = 224, 
     normalize: bool = False, 
     normalization_factor: float = 255.0
-):
+) -> tuple[tf.Tensor, tf.Tensor]:
     """
     Preprocesses an image by resizing, converting it to float32, 
     and optionally normalizing its pixel values.
