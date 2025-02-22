@@ -1,3 +1,4 @@
+import matplotlib.pyplot as plt
 import tensorflow as tf
 from tensorflow.keras.callbacks import ModelCheckpoint
 
@@ -74,3 +75,57 @@ def prepare_checkpoint_callback(
         save_best_only=save_best_only,
         save_freq=save_freq
     )
+
+
+def plot_history(history: tf.keras.callbacks.History):
+    """
+    Plots the training and validation accuracy and loss curves from a Keras History object.
+
+    This function visualizes the model's learning progress by plotting accuracy and loss 
+    trends over epochs for both training and validation.
+
+    **Note:** 
+        This function requires the History object to contain validation metrics (`val_accuracy` and `val_loss`). 
+        It should only be used when the model was trained with validation data.
+
+    Args:
+        history (tf.keras.callbacks.History): Keras History object containing training and validation metrics.
+
+    Raises:
+        ValueError: If the history object does not contain validation accuracy (`val_accuracy`) or validation loss (`val_loss`).
+
+    Example:
+        >>> model.fit(X_train, y_train, validation_data=(X_val, y_val), epochs=10)
+        >>> plot_history(model.history)
+    """
+    # Ensure validation metrics exist
+    if 'val_accuracy' not in history.history or 'val_loss' not in history.history:
+        raise ValueError("The history object must contain 'val_accuracy' and 'val_loss'. Ensure the model was trained with validation data.")
+
+    # Extract history data (keeping your original extraction style)
+    accuracy = history.history['accuracy']
+    val_accuracy = history.history['val_accuracy']
+    loss = history.history['loss']
+    val_loss = history.history['val_loss']
+
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+
+    # Accuracy Plot
+    axes[0].plot(accuracy, label='Training Accuracy', color='blue', marker='o')
+    axes[0].plot(val_accuracy, label='Validation Accuracy', color='red', marker='o')
+    axes[0].set_title('Training and Validation Accuracy')
+    axes[0].set_xlabel('Epochs')
+    axes[0].set_ylabel('Accuracy')
+    axes[0].legend()
+    axes[0].grid(True)
+
+    # Loss Plot
+    axes[1].plot(loss, label='Training Loss', color='blue', marker='o')
+    axes[1].plot(val_loss, label='Validation Loss', color='red', marker='o')
+    axes[1].set_title('Training and Validation Loss')
+    axes[1].set_xlabel('Epochs')
+    axes[1].set_ylabel('Loss')
+    axes[1].legend()
+    axes[1].grid(True)
+
+    plt.show()
