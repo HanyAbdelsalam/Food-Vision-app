@@ -1,6 +1,19 @@
+from typing import Type
 import matplotlib.pyplot as plt
+import datetime
+
 import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.models import Model
+from tensorflow.keras.applications import EfficientNetB0
+from tensorflow.keras.losses import SparseCategoricalCrossentropy
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.callbacks import ModelCheckpoint, TensorBoard, ReduceLROnPlateau, EarlyStopping
+from tensorflow.keras.layers import Input, Activation, Dense, GlobalAveragePooling2D, Dropout
+from tensorflow.keras.layers import RandomCrop, RandomFlip, RandomHeight, RandomWidth, RandomZoom, RandomRotation, Rescaling
 from tensorflow.keras.callbacks import ModelCheckpoint
+from tensorflow.keras import mixed_precision
+
 
 def image_preprocessing(
     image: tf.Tensor, 
@@ -36,45 +49,68 @@ def image_preprocessing(
     return image, label
 
 
-def prepare_checkpoint_callback(
-    checkpoint_path: str = "./checkpoints/best_performer.weights.h5",
+def prepare_callbacks(
+    checkpoint_name: str,
+    logs_name: str,
     monitor: str = "val_accuracy",
     verbose: int = 1,
-    save_weights_only: bool = True,
-    save_best_only: bool = True,
-    save_freq: str = "epoch"
-) -> ModelCheckpoint:
+    checkpoint_save_best_only: bool = True,
+    checkpoint_save_weights_only: bool = True,
+    checkpoint_save_freq: str = "epoch",
+    reduceLearningRate_factor: float = 0.1,
+    reduceLearningRate_patience: int = 3,
+    earlyStopping_patience: int = 3
+) -> list:
     """
-    Prepares and returns a ModelCheckpoint callback to save the best model weights during training.
-
-    This function helps in saving the model's progress by storing the best-performing weights based 
-    on a monitored metric (e.g., validation accuracy). The checkpoint can either save only the 
-    weights or the entire model.
-
-    Note:
-        - If `save_weights_only=True`, the `checkpoint_path` **must end with `.weights.h5`** 
-          to ensure only the weights are saved.
-        - If `save_weights_only=False`, the full model (architecture + optimizer state) is saved.
+    Prepares and returns a list of Keras callbacks for model training.
 
     Args:
-        checkpoint_path (str, optional): Path to save the checkpoint file. Defaults to "./checkpoints/best_performer.weights.h5".
-        monitor (str, optional): Metric to monitor for improvements (e.g., "val_loss" or "val_accuracy"). Defaults to "val_accuracy".
-        verbose (int, optional): Verbosity mode (0 = silent, 1 = updates on saving). Defaults to 1.
-        save_weights_only (bool, optional): If True, only saves model weights. Defaults to True.
-        save_best_only (bool, optional): If True, saves only the best model based on `monitor`. Defaults to True.
-        save_freq (str, optional): Frequency at which checkpoints are saved ("epoch" or an integer for batch frequency). Defaults to "epoch".
+        checkpoint_name (str): Base name for checkpoint files.
+        logs_name (str): Name for the TensorBoard logs directory.
+        monitor (str): Metric to monitor (default is "val_accuracy").
+        verbose (int): Verbosity level for callbacks (0 or 1).
+        checkpoint_save_best_only (bool): Save only the best model.
+        checkpoint_save_weights_only (bool): Save only model weights.
+        checkpoint_save_freq (str): Frequency for saving checkpoints ("epoch" or batch).
+        reduceLearningRate_factor (float): Factor by which learning rate is reduced.
+        reduceLearningRate_patience (int): Patience for reducing learning rate.
+        earlyStopping_patience (int): Patience for early stopping.
 
     Returns:
-        ModelCheckpoint: A configured ModelCheckpoint callback for model training.
+        list: List of callbacks (ModelCheckpoint, TensorBoard, ReduceLROnPlateau, EarlyStopping).
     """
-    return ModelCheckpoint(
-        filepath=checkpoint_path,
-        monitor=monitor,
-        verbose=verbose,
-        save_weights_only=save_weights_only,
-        save_best_only=save_best_only,
-        save_freq=save_freq
-    )
+
+    if checkpoint_save_weights_only:
+        checkpoint_path = f"./checkpoints/{checkpoint_name}.weights.h5"
+    else:
+        checkpoint_path = f"./checkpoints/{checkpoint_name}.model.keras"
+
+    logs_path = f"./logs/{logs_name}/{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}"
+    
+    # ModelCheckpoint callback: saves the model (or weights) based on the monitored metric.
+    checkpoint = ModelCheckpoint(filepath=checkpoint_path,
+                                 monitor=monitor,
+                                 save_best_only=checkpoint_save_best_only,
+                                 save_weights_only=checkpoint_save_weights_only,
+                                 save_freq=checkpoint_save_freq,
+                                 verbose=verbose)
+    
+    # TensorBoard callback: logs training progress for visualization using TensorBoard.
+    tensorboard = TensorBoard(log_dir=logs_path)
+    
+    # ReduceLROnPlateau callback: reduces the learning rate when the monitored metric stops improving.
+    reduce_lr = ReduceLROnPlateau(monitor=monitor,
+                                  factor=reduceLearningRate_factor,
+                                  patience=reduceLearningRate_patience,
+                                  verbose=verbose)
+    
+    # EarlyStopping callback: stops training when the monitored metric stops improving for a given number of epochs.
+    early_stopping = EarlyStopping(monitor=monitor,
+                                   patience=earlyStopping_patience,
+                                   verbose=verbose)
+    
+    # Return the list of callbacks to be used during model training.
+    return [checkpoint, tensorboard, reduce_lr, early_stopping]
 
 
 def plot_history(history: tf.keras.callbacks.History):
@@ -129,3 +165,100 @@ def plot_history(history: tf.keras.callbacks.History):
     axes[1].grid(True)
 
     plt.show()
+
+
+def build_model(
+    model_name: str,
+    num_classes: int = 101,
+    with_data_aug: bool = False,
+    backbone: Type[Model] = EfficientNetB0,
+    normalize: bool = False,
+    add_bottleneck_layer: bool = False,
+    with_regularization_and_dropout: bool = False,
+    use_transfer_learning: bool = False) -> Model:
+    """
+    Builds a customizable image classification model.
+    
+    Parameters:
+        model_name (str): Name of the model.
+        num_classes (int): Number of output classes for the final classification layer.
+        with_data_aug (bool): Whether to include data augmentation layers.
+        backbone (Type[Model]): Pretrained CNN backbone model (e.g., EfficientNetB0) from `tf.keras.applications`.
+        normalize (bool): Whether to normalize input images if data augmentation is enabled.
+        add_bottleneck_layer (bool): Whether to add an extra dense bottleneck layer before classification.
+        with_regularization_and_dropout (bool): Whether to apply dropout and L2 regularization.
+        use_transfer_learning (bool): If True, freezes the backbone; otherwise, trains from scratch.
+    
+    Returns:
+        Model: A compiled Keras model ready for training.
+    
+    Note:
+        The `backbone` parameter must be a model from `tf.keras.applications` (e.g., EfficientNetB0, ResNet50, etc.)
+    """
+   
+    mixed_precision.set_global_policy("mixed_float16")  # Set mixed precision policy
+    print(mixed_precision.global_policy())  # Print global policy
+    
+    # Input layer for 224x224 RGB images
+    inputs = Input(shape=(224, 224, 3), name="input_layer")
+    
+    # Load the backbone model without the top classification layers
+    base_model = backbone(include_top=False, input_shape=(224, 224, 3))
+    
+    # Apply data augmentation if enabled
+    if with_data_aug:
+        if normalize:
+            data_augmentation = Sequential([
+                RandomFlip("horizontal"),
+                RandomRotation(0.2),
+                RandomHeight(0.2),
+                RandomWidth(0.2),
+                RandomZoom(0.2),
+                Rescaling(1./255)  # Normalize images to [0,1] range
+            ], name="data_augmentation_layer")
+        else:
+            data_augmentation = Sequential([
+                RandomFlip("horizontal"),
+                RandomRotation(0.2),
+                RandomHeight(0.2),
+                RandomWidth(0.2),
+                RandomZoom(0.2)
+            ], name="data_augmentation_layer")        
+        x = data_augmentation(inputs)
+    else:
+        x = inputs
+    
+    # Freeze the backbone for transfer learning, otherwise train it
+    base_model.trainable = not use_transfer_learning
+    x = base_model(x, training=not use_transfer_learning)
+    
+    # Apply global average pooling to reduce feature map size
+    x = GlobalAveragePooling2D(name="global_average_pooling_layer")(x)
+    
+    # Optional bottleneck layer to add extra dense features
+    if add_bottleneck_layer:
+        if with_regularization_and_dropout:
+            x = Dropout(0.3)(x)  # Apply dropout to reduce overfitting
+            x = Dense(256, activation="relu", name="bottleneck_layer", kernel_regularizer=tf.keras.regularizers.l2(0.001))(x)
+        else:
+            x = Dense(256, activation="relu", name="bottleneck_layer")(x)
+    
+    # Final classification layer
+    if with_regularization_and_dropout:
+        x = Dropout(0.3)(x)  # Apply dropout before logits layer
+        x = Dense(num_classes, name="logits_layer", kernel_regularizer=tf.keras.regularizers.l2(0.001))(x)
+    else:
+        x = Dense(num_classes, name="logits_layer")(x)
+    
+    # Softmax activation for multi-class classification (101 classes)
+    outputs = Activation("softmax", dtype=tf.float32, name="activation_output_layer")(x)
+    
+    # Create the model
+    model = Model(inputs, outputs, name=model_name)
+    
+    # Compile the model with sparse categorical cross-entropy and Adam optimizer
+    model.compile(loss=SparseCategoricalCrossentropy(),
+                  optimizer=Adam(),
+                  metrics=["accuracy"])
+    
+    return model
