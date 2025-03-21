@@ -1,6 +1,9 @@
 from typing import Type
 import matplotlib.pyplot as plt
 import datetime
+import os
+import json
+import numpy as np
 
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
@@ -8,7 +11,7 @@ from tensorflow.keras.models import Model
 from tensorflow.keras.applications import EfficientNetB0
 from tensorflow.keras.losses import SparseCategoricalCrossentropy
 from tensorflow.keras.optimizers import Adam
-from tensorflow.keras.callbacks import ModelCheckpoint, TensorBoard, ReduceLROnPlateau, EarlyStopping
+from tensorflow.keras.callbacks import ModelCheckpoint, TensorBoard, ReduceLROnPlateau, EarlyStopping, CSVLogger
 from tensorflow.keras.layers import Input, Activation, Dense, GlobalAveragePooling2D, Dropout
 from tensorflow.keras.layers import RandomCrop, RandomFlip, RandomHeight, RandomWidth, RandomZoom, RandomRotation, Rescaling
 from tensorflow.keras.callbacks import ModelCheckpoint
@@ -57,9 +60,9 @@ def prepare_callbacks(
     checkpoint_save_best_only: bool = True,
     checkpoint_save_weights_only: bool = True,
     checkpoint_save_freq: str = "epoch",
-    reduceLearningRate_factor: float = 0.1,
-    reduceLearningRate_patience: int = 3,
-    earlyStopping_patience: int = 3
+    reduce_lr_factor: float = 0.2,
+    reduce_lr_patience: int = 0,
+    early_stopping_patience: int = 3
 ) -> list:
     """
     Prepares and returns a list of Keras callbacks for model training.
@@ -67,50 +70,76 @@ def prepare_callbacks(
     Args:
         checkpoint_name (str): Base name for checkpoint files.
         logs_name (str): Name for the TensorBoard logs directory.
-        monitor (str): Metric to monitor (default is "val_accuracy").
-        verbose (int): Verbosity level for callbacks (0 or 1).
-        checkpoint_save_best_only (bool): Save only the best model.
-        checkpoint_save_weights_only (bool): Save only model weights.
-        checkpoint_save_freq (str): Frequency for saving checkpoints ("epoch" or batch).
-        reduceLearningRate_factor (float): Factor by which learning rate is reduced.
-        reduceLearningRate_patience (int): Patience for reducing learning rate.
-        earlyStopping_patience (int): Patience for early stopping.
+        monitor (str, optional): Metric to monitor (default: "val_accuracy").
+        verbose (int, optional): Verbosity level for callbacks (0 = silent, 1 = progress messages).
+        checkpoint_save_best_only (bool, optional): If True, only saves the best model based on monitored metric.
+        checkpoint_save_weights_only (bool, optional): If True, only model weights are saved; otherwise, the entire model is saved.
+        checkpoint_save_freq (str, optional): "epoch" to save per epoch or an integer (number of batches) for batch-wise saving.
+        reduce_lr_factor (float, optional): Factor to reduce the learning rate when performance plateaus (default: 0.1).
+        reduce_lr_patience (int, optional): Number of epochs with no improvement before reducing learning rate (default: 3).
+        early_stopping_patience (int, optional): Number of epochs with no improvement before stopping training early (default: 3).
 
     Returns:
-        list: List of callbacks (ModelCheckpoint, TensorBoard, ReduceLROnPlateau, EarlyStopping).
+        list: List of Keras callbacks, including:
+              - ModelCheckpoint
+              - TensorBoard
+              - ReduceLROnPlateau
+              - EarlyStopping
+              - CSVLogger
     """
+     # Validate save_freq to prevent errors
+    if checkpoint_save_freq != "epoch" and not isinstance(checkpoint_save_freq, int):
+        raise ValueError("checkpoint_save_freq must be 'epoch' or an integer (number of batches).")
 
-    if checkpoint_save_weights_only:
-        checkpoint_path = f"./checkpoints/{checkpoint_name}.weights.h5"
-    else:
-        checkpoint_path = f"./checkpoints/{checkpoint_name}.model.keras"
+    # Define checkpoint path
+    checkpoint_ext = "weights.h5" if checkpoint_save_weights_only else "model.keras"
+    checkpoint_path = f"./checkpoints/{checkpoint_name}.{checkpoint_ext}"
 
+     # Define log directory path with timestamp
     logs_path = f"./logs/{logs_name}/{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}"
     
+    # Define CSV logger path
+    csv_logger_path = f"./histories/csv/{checkpoint_name}.csv"
+    
+    # Ensure necessary directories exist
+    os.makedirs("./checkpoints", exist_ok=True)
+    os.makedirs("./logs", exist_ok=True)
+    os.makedirs("./histories/csv", exist_ok=True)
+    
     # ModelCheckpoint callback: saves the model (or weights) based on the monitored metric.
-    checkpoint = ModelCheckpoint(filepath=checkpoint_path,
-                                 monitor=monitor,
-                                 save_best_only=checkpoint_save_best_only,
-                                 save_weights_only=checkpoint_save_weights_only,
-                                 save_freq=checkpoint_save_freq,
-                                 verbose=verbose)
+    checkpoint = ModelCheckpoint(
+        filepath=checkpoint_path,
+        monitor=monitor,
+        save_best_only=checkpoint_save_best_only,
+        save_weights_only=checkpoint_save_weights_only,
+        save_freq=checkpoint_save_freq,
+        verbose=verbose
+    )
     
     # TensorBoard callback: logs training progress for visualization using TensorBoard.
     tensorboard = TensorBoard(log_dir=logs_path)
     
     # ReduceLROnPlateau callback: reduces the learning rate when the monitored metric stops improving.
-    reduce_lr = ReduceLROnPlateau(monitor=monitor,
-                                  factor=reduceLearningRate_factor,
-                                  patience=reduceLearningRate_patience,
-                                  verbose=verbose)
+    reduce_lr = ReduceLROnPlateau(
+        monitor=monitor,
+        factor=reduce_lr_factor,
+        patience=reduce_lr_patience,
+        verbose=verbose,
+        min_lr=1e-7,
+    )
     
-    # EarlyStopping callback: stops training when the monitored metric stops improving for a given number of epochs.
-    early_stopping = EarlyStopping(monitor=monitor,
-                                   patience=earlyStopping_patience,
-                                   verbose=verbose)
+   # EarlyStopping callback: stops training when the monitored metric stops improving for a given number of epochs.
+    early_stopping = EarlyStopping(
+        monitor=monitor,
+        patience=early_stopping_patience,
+        verbose=verbose
+    )
+    
+    # CSVLogger callback: logs training history to a CSV file.
+    csv_logger = CSVLogger(csv_logger_path, append=True)
     
     # Return the list of callbacks to be used during model training.
-    return [checkpoint, tensorboard, reduce_lr, early_stopping]
+    return [checkpoint, tensorboard, reduce_lr, early_stopping, csv_logger]
 
 
 def plot_history(history: tf.keras.callbacks.History):
@@ -262,3 +291,52 @@ def build_model(
                   metrics=["accuracy"])
     
     return model
+
+
+def display_layers_info(model):
+  for layer in model.layers:
+    print(f"""
+          Layer name: {layer.name}
+          Trainable: {layer.trainable}
+          Layer dtype: {layer.dtype}
+          Layer output dtype: {layer.output.dtype}
+          Layer compute dtype: {layer.compute_dtype}
+
+    """)
+
+
+def unfreeze_top_layers(model, start_fraction: float = 0.9, backbone_index: int = 1, learning_rate: float = 0.0001):
+    start_index = int(len(model.layers[backbone_index].layers)*start_fraction)
+    for layer in model.layers[backbone_index].layers[start_index:]:
+        layer.trainable = True
+    model.compile(loss=SparseCategoricalCrossentropy(),
+                    optimizer=Adam(learning_rate=learning_rate),
+                    metrics=["accuracy"])
+    return model
+
+def save_training_history(history, model_name: str):
+    """
+    Saves the training history object to a JSON file.
+
+    Args:
+        history: The history object returned by model.fit().
+        model_name (str): The base name of the model for file naming.
+
+    Returns:
+        None
+    """
+    
+    os.makedirs("./histories/json", exist_ok=True)
+
+    filename = f"./histories/json/{model_name}.json"
+
+    history_data = {
+        key: [float(value) if isinstance(value, (np.floating, np.float32, np.float64)) else int(value) if isinstance(value, (np.integer, np.int32, np.int64)) else value
+              for value in values]
+        for key, values in history.history.items()
+    }
+
+    with open(filename, "w") as f:
+        json.dump(history_data, f, indent=4)
+
+    print(f"Training history saved to {filename}")
