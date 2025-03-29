@@ -274,6 +274,9 @@ def build_model(
     
     # Final classification layer
     if with_regularization_and_dropout:
+        for layer in base_model.layers:  # model.layers[1] is the EfficientNetB0 backbone
+            if isinstance(layer, (tf.keras.layers.Conv2D, tf.keras.layers.DepthwiseConv2D)):
+                layer.kernel_regularizer = tf.keras.regularizers.l2(0.001)
         x = Dropout(0.3)(x)  # Apply dropout before logits layer
         x = Dense(num_classes, name="logits_layer", kernel_regularizer=tf.keras.regularizers.l2(0.001))(x)
     else:
