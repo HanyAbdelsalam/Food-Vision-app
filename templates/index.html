@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+{% block title %}Food Vision{% endblock %}
+{% block content %}
+    <div class="logo-container">
+        <h1>Food Vision</h1>
+        <img src="{{ url_for('static', filename='images/hamburger.png') }}" alt="Burger">
+        <img src="{{ url_for('static', filename='images/eye.png') }}" alt="Eye">
+    </div>
+
+    <div class="make_prediction_container">
+        <input type="file" id="image_upload" accept="image/*">
+        <button id="prediction_btn">Predict</button>
+    </div>
+    
+    <div class="prediction_result_container">
+        <h2 id="loading"></h2>
+        <div class="result_wrapper">
+            <p id="prediction_result"></p>
+            <img id="top5_image" style="display: none;">
+        </div>
+    </div>
+{% endblock %}

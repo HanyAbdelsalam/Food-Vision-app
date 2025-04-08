@@ -1,0 +1,97 @@
+* {
+    padding: 0;
+    margin: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Poppins', sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    color: #fff;
+    background: #102E50;
+    text-rendering: optimizeLegibility;
+}
+
+/* Input Field Styling */
+input[type="file"] {
+    color: #F5C45E;
+    padding: 12px;
+    border: 2px dashed #F5C45E;
+    background-color: transparent;
+    text-align: center;
+    cursor: pointer;
+    border-radius: 8px;
+    font-size: 14px;
+    transition: all 0.3s ease-in-out;
+}
+
+input[type="file"]:hover {
+    background-color: rgba(245, 196, 94, 0.1);
+}
+
+/* Logo Styling */
+.logo-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    margin-top: 40px;
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 2.8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: #F5C45E;
+}
+
+.logo-container img {
+    width: 60px;
+    height: auto;
+}
+
+/* Upload Section */
+.make_prediction_container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-top: 25px;
+    gap: 15px;
+}
+
+/* Prediction Button Styling */
+#prediction_btn {
+    cursor: pointer;
+    background-image: linear-gradient(to top, #E78B48 0%, #F5C45E 100%);
+    color: white;
+    padding: 14px 24px;
+    font-size: 18px;
+    font-weight: bold;
+    border: none;
+    border-radius: 8px;
+    transition: all 0.3s ease-in-out;
+    box-shadow: 0px 4px 10px rgba(255, 165, 0, 0.3);
+}
+
+#prediction_btn:hover {
+    background-image: linear-gradient(to top, #BE3D2A 0%, #E78B48 100%);
+    transform: scale(1.05);
+    box-shadow: 0px 6px 12px rgba(255, 165, 0, 0.5);
+}
+
+/* Prediction Result Styling */
+.prediction_result_container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-top: 30px;
+}
+
+/* Image Styling */
+.result_wrapper img {
+    width: 100%;
+    max-width: 750px;
+    height: auto;
+    border-radius: 12px;
+    margin-top: 15px;
+    /* box-shadow: 0px 4px 10px rgba(255, 255, 255, 0.3); */
+}
